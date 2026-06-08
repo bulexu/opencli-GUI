@@ -1,0 +1,16 @@
+node_modules/
+dist/
+dist-electron/
+release/
+*.log
+.DS_Store
+
+_bmad*
+.agents
+.claude
+.github
+
+releases/*-unpacked
+releases/*.yaml
+releases/*.yml
+releases/*.block*

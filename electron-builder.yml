@@ -1,0 +1,32 @@
+appId: com.opencli.gui
+productName: OpenCLI GUI
+executableName: opencli-gui
+directories:
+  buildResources: build
+  output: releases
+asar: true
+asarUnpack:
+  - node_modules/@jackwener/opencli/**/*
+icon: opencli.ico
+files:
+  - dist/**/*
+  - dist-electron/**/*
+  - node_modules/@jackwener/opencli/**/*
+  - build/adapters-cache.json
+win:
+  target:
+    - nsis
+  icon: opencli.ico
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  include: build/installer.nsh
+mac:
+  target:
+    - dmg
+  icon: opencli.icns
+linux:
+  target:
+    - AppImage
+  icon: opencli.ico
