@@ -8,7 +8,8 @@
     "build": "tsc -p tsconfig.node.json && vite build",
     "preview": "vite preview",
     "dist": "npm run build && electron-builder",
-    "dist:win": "npm run build && electron-builder --win"
+    "dist:win": "npm run build && electron-builder --win",
+    "postinstall": "node scripts/vendor-opencli.js"
   },
   "dependencies": {
     "@jackwener/opencli": "^1.8.3",
@@ -22,7 +23,7 @@
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
     "@vitejs/plugin-react": "^4.3.4",
-    "electron": "^33.2.0",
+    "electron": "^33.4.11",
     "electron-builder": "^25.1.8",
     "typescript": "^5.7.2",
     "vite": "^6.0.0",

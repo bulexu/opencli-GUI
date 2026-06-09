@@ -6,17 +6,16 @@ import * as crypto from 'crypto'
 
 let mainWindow: BrowserWindow | null = null
 
-// Resolve bundled opencli script path
-// In packaged app: resources/app.asar.unpacked/node_modules/@jackwener/opencli/dist/src/main.js
-// In dev: project_root/node_modules/@jackwener/opencli/dist/src/main.js
+// Resolve bundled opencli script path (vendored to avoid pnpm symlink issues)
+// In packaged app: resources/app.asar.unpacked/vendor/opencli/dist/src/main.js
+// In dev: project_root/vendor/opencli/dist/src/main.js
 let OPENCLI_SCRIPT = ''
 function resolveOpencliScript(): string {
   if (app.isPackaged) {
-    // With asarUnpack, opencli files are extracted to app.asar.unpacked/
-    return path.join(process.resourcesPath, 'app.asar.unpacked', 'node_modules', '@jackwener', 'opencli', 'dist', 'src', 'main.js')
+    return path.join(process.resourcesPath, 'app.asar.unpacked', 'vendor', 'opencli', 'dist', 'src', 'main.js')
   }
   // Dev: __dirname is dist-electron/, go up to project root
-  return path.join(__dirname, '..', 'node_modules', '@jackwener', 'opencli', 'dist', 'src', 'main.js')
+  return path.join(__dirname, '..', 'vendor', 'opencli', 'dist', 'src', 'main.js')
 }
 
 const PRESETS_PATH = path.join(app.getPath('userData'), 'presets.json')
@@ -114,7 +113,7 @@ function loadAdaptersCache(): unknown[] | null {
   // 2. Fall back to bundled cache (packed with the app)
   try {
     const bundledPath = app.isPackaged
-      ? path.join(process.resourcesPath, 'app', 'build', 'adapters-cache.json')
+      ? path.join(process.resourcesPath, 'app.asar', 'build', 'adapters-cache.json')
       : path.join(__dirname, '..', 'build', 'adapters-cache.json')
     if (fs.existsSync(bundledPath)) {
       const raw = JSON.parse(fs.readFileSync(bundledPath, 'utf-8'))
@@ -200,6 +199,10 @@ app.whenReady().then(() => {
   OPENCLI_SCRIPT = resolveOpencliScript()
   console.log('[opencli-gui] opencli script:', OPENCLI_SCRIPT)
   console.log('[opencli-gui] script exists:', fs.existsSync(OPENCLI_SCRIPT))
+  if (app.isPackaged) {
+    const unpackedDir = path.join(process.resourcesPath, 'app.asar.unpacked')
+    console.log('[opencli-gui] app.asar.unpacked exists:', fs.existsSync(unpackedDir))
+  }
   createWindow()
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
@@ -224,20 +227,32 @@ app.on('before-quit', (event) => {
     })
 })
 
-// Helper: run bundled opencli script via Electron's Node.js runtime
-// Uses process.execPath (the Electron binary) which can execute .js scripts like `node`
+// Helper: run bundled opencli script
+// In dev: use `node` directly to avoid Commander v14's Electron auto-detection
+//   (which does argv.slice(1) instead of slice(2) when process.defaultApp is unset,
+//   causing the script path to be treated as a command argument).
+// In packaged: use process.execPath (Electron binary) with ELECTRON_RUN_AS_NODE=1.
 function runOpencli(args: string[], timeoutMs = 120_000): Promise<{ stdout: string; stderr: string; exitCode: number }> {
   const requestId = crypto.randomUUID()
 
   return new Promise((resolve) => {
-    const child = execFile(process.execPath, [OPENCLI_SCRIPT, ...args], {
+    let cwd: string
+    if (app.isPackaged) {
+      const unpackedDir = path.join(process.resourcesPath, 'app.asar.unpacked')
+      cwd = fs.existsSync(unpackedDir) ? unpackedDir : process.resourcesPath
+    } else {
+      cwd = path.join(__dirname, '..')
+    }
+
+    const execBin = app.isPackaged ? process.execPath : 'node'
+    const execEnv = app.isPackaged ? { ...process.env, ELECTRON_RUN_AS_NODE: '1' } : { ...process.env }
+
+    const child = execFile(execBin, [OPENCLI_SCRIPT, ...args], {
       windowsHide: true,
       timeout: timeoutMs,
-      maxBuffer: 50 * 1024 * 1024, // 50MB max output
-      // cwd for opencli's module resolution (Node resolves from script dir, cwd is a safety net)
-      cwd: app.isPackaged
-        ? path.join(process.resourcesPath, 'app.asar.unpacked')
-        : path.join(__dirname, '..'),
+      maxBuffer: 50 * 1024 * 1024,
+      cwd,
+      env: execEnv,
     }, (error, stdout, stderr) => {
       activeProcesses.delete(requestId)
 

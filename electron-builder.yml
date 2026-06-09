@@ -6,12 +6,12 @@ directories:
   output: releases
 asar: true
 asarUnpack:
-  - node_modules/@jackwener/opencli/**/*
+  - vendor/**
 icon: opencli.ico
 files:
   - dist/**/*
   - dist-electron/**/*
-  - node_modules/@jackwener/opencli/**/*
+  - vendor/**/*
   - build/adapters-cache.json
 win:
   target:
