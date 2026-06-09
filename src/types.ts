@@ -36,8 +36,6 @@ export interface Preset {
 }
 
 export interface FeishuConfig {
-  appId: string
-  appSecret: string
   webhook: {
     url: string
     keyword: string

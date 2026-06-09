@@ -27,8 +27,6 @@ const ADAPTERS_CACHE_TMP = ADAPTERS_CACHE_PATH + '.tmp'
 
 // Feishu config persistence
 interface FeishuConfigData {
-  appId: string
-  appSecret: string
   webhook: { url: string; keyword: string }
 }
 
@@ -41,8 +39,6 @@ function loadFeishuConfigData(): FeishuConfigData {
       const raw = JSON.parse(fs.readFileSync(FEISHU_CONFIG_PATH, 'utf-8'))
       if (raw && typeof raw === 'object') {
         return {
-          appId: typeof raw.appId === 'string' ? raw.appId : '',
-          appSecret: typeof raw.appSecret === 'string' ? raw.appSecret : '',
           webhook: raw.webhook && typeof raw.webhook === 'object'
             ? {
                 url: typeof raw.webhook.url === 'string' ? raw.webhook.url : '',
@@ -55,7 +51,7 @@ function loadFeishuConfigData(): FeishuConfigData {
   } catch {
     // corrupt file — ignore
   }
-  return { appId: '', appSecret: '', webhook: { url: '', keyword: '' } }
+  return { webhook: { url: '', keyword: '' } }
 }
 
 function saveFeishuConfigData(config: FeishuConfigData): void {
@@ -728,8 +724,6 @@ ipcMain.handle('feishuConfig:save', (_event, config: unknown) => {
   if (!config || typeof config !== 'object') return loadFeishuConfigData()
   const c = config as Record<string, unknown>
   const data: FeishuConfigData = {
-    appId: typeof c.appId === 'string' ? c.appId : '',
-    appSecret: typeof c.appSecret === 'string' ? c.appSecret : '',
     webhook: c.webhook && typeof c.webhook === 'object'
       ? {
           url: typeof (c.webhook as Record<string, unknown>).url === 'string' ? (c.webhook as Record<string, unknown>).url as string : '',

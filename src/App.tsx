@@ -31,7 +31,7 @@ function App() {
   const [batchProgress, setBatchProgress] = useState<{ current: number; total: number } | null>(null)
   const batchCancelRef = useRef(false)
 
-  const [feishuConfig, setFeishuConfig] = useState<FeishuConfig>({ appId: '', appSecret: '', webhook: { url: '', keyword: '' } })
+  const [feishuConfig, setFeishuConfig] = useState<FeishuConfig>({ webhook: { url: '', keyword: '' } })
   const [settingsOpen, setSettingsOpen] = useState(false)
 
   const [tasks, setTasks] = useState<ScheduledTask[]>([])

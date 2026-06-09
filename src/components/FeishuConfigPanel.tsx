@@ -81,28 +81,6 @@ export default function FeishuConfigPanel({ config, open, onClose, onSaved }: Pr
 
         <div className="modal-body">
           <div className="form-section">
-            <h3>应用凭证</h3>
-            <div className="form-field">
-              <label>App ID</label>
-              <input
-                type="text"
-                value={form.appId}
-                placeholder="飞书应用 App ID"
-                onChange={(e) => setForm({ ...form, appId: e.target.value })}
-              />
-            </div>
-            <div className="form-field">
-              <label>App Secret</label>
-              <input
-                type="password"
-                value={form.appSecret}
-                placeholder="飞书应用 App Secret"
-                onChange={(e) => setForm({ ...form, appSecret: e.target.value })}
-              />
-            </div>
-          </div>
-
-          <div className="form-section">
             <h3>Webhook</h3>
             <div className={`form-field ${urlError ? 'field-error' : ''}`}>
               <label>Webhook URL</label>
