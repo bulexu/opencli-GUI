@@ -1,13 +1,15 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import Papa from 'papaparse'
-import type { Adapter, Preset, FeishuConfig } from './types'
-import { listCommands, loadPresets, savePreset, deletePreset, loadFeishuConfig } from './services/opencli'
+import type { Adapter, Preset, FeishuConfig, ScheduledTask } from './types'
+import { listCommands, loadPresets, savePreset, deletePreset, loadFeishuConfig, loadTasks, saveTask, deleteTask, runTaskNow, onTasksUpdated } from './services/opencli'
 import PlatformSelector from './components/PlatformSelector'
 import CommandSelector from './components/CommandSelector'
 import ParamForm from './components/ParamForm'
 import ResultTable from './components/ResultTable'
 import PresetManager from './components/PresetManager'
 import FeishuConfigPanel from './components/FeishuConfigPanel'
+import TaskList from './components/TaskList'
+import TaskEditor from './components/TaskEditor'
 
 type Step = 'platform' | 'command' | 'params'
 
@@ -32,9 +34,15 @@ function App() {
   const [feishuConfig, setFeishuConfig] = useState<FeishuConfig>({ appId: '', appSecret: '', webhook: { url: '', keyword: '' } })
   const [settingsOpen, setSettingsOpen] = useState(false)
 
+  const [tasks, setTasks] = useState<ScheduledTask[]>([])
+  const [editingTaskId, setEditingTaskId] = useState<string | null>(null)
+  const editingTask = editingTaskId === null ? null
+    : editingTaskId === 'new' ? 'new' as const
+    : tasks.find((t) => t.id === editingTaskId) ?? null
+
   useEffect(() => {
     // Decouple: adapter failure is fatal, preset and config failures are non-fatal
-    Promise.allSettled([listCommands(), loadPresets(), loadFeishuConfig()]).then(([adpsResult, prsResult, fcResult]) => {
+    Promise.allSettled([listCommands(), loadPresets(), loadFeishuConfig(), loadTasks()]).then(([adpsResult, prsResult, fcResult, tkResult]) => {
       if (adpsResult.status === 'rejected') {
         setError(adpsResult.reason?.message || '加载适配器列表失败')
       } else {
@@ -46,14 +54,21 @@ function App() {
       if (fcResult.status === 'fulfilled') {
         setFeishuConfig(fcResult.value)
       }
+      if (tkResult.status === 'fulfilled') {
+        setTasks(tkResult.value)
+      }
       setLoading(false)
     })
 
     // Listen for background adapter list updates (from cache refresh)
-    const cleanup = window.api.onAdaptersUpdated((data) => {
+    const cleanupAdapters = window.api.onAdaptersUpdated((data) => {
       setAdapters(data as Adapter[])
     })
-    return cleanup
+    // Listen for task updates from scheduler (main process)
+    const cleanupTasks = onTasksUpdated((data) => {
+      setTasks(data)
+    })
+    return () => { cleanupAdapters(); cleanupTasks() }
   }, [])
 
   // Auto-dismiss toast
@@ -202,6 +217,47 @@ function App() {
     setStep('params')
   }, [adapters])
 
+  const handleAddTask = useCallback(() => {
+    setEditingTaskId('new')
+  }, [])
+
+  const handleEditTask = useCallback((task: ScheduledTask) => {
+    setEditingTaskId(task.id)
+  }, [])
+
+  const handleSaveTask = useCallback(async (task: ScheduledTask) => {
+    try {
+      const updated = await saveTask(task)
+      setTasks(updated)
+      setEditingTaskId(null)
+      setToast('任务已保存')
+    } catch {
+      setToast('保存任务失败')
+    }
+  }, [])
+
+  const handleDeleteTask = useCallback(async (id: string) => {
+    try {
+      const updated = await deleteTask(id)
+      setTasks(updated)
+      if (editingTaskId === id) {
+        setEditingTaskId(null)
+      }
+    } catch {
+      setToast('删除任务失败')
+    }
+  }, [editingTaskId])
+
+  const handleRunTaskNow = useCallback(async (taskId: string) => {
+    try {
+      const updated = await runTaskNow(taskId)
+      setTasks(updated)
+      setToast('任务已执行')
+    } catch {
+      setToast('执行任务失败')
+    }
+  }, [])
+
   const handleBack = useCallback(() => {
     if (step === 'params') {
       setStep('command')
@@ -282,43 +338,55 @@ function App() {
 
       <div className="app-body">
         <div className="main-content">
-          {step !== 'platform' && (
-            <button className="back-btn" onClick={handleBack}>← 返回</button>
-          )}
-
-          {step === 'platform' && (
-            <PlatformSelector
-              sites={sites}
-              adapters={adapters}
-              onSelect={handleSiteSelect}
+          {editingTask ? (
+            <TaskEditor
+              task={editingTask === 'new' ? null : editingTask}
+              presets={presets}
+              onSave={handleSaveTask}
+              onCancel={() => setEditingTaskId(null)}
+              onRunNow={handleRunTaskNow}
             />
-          )}
-
-          {step === 'command' && selectedSite && (
-            <CommandSelector
-              site={selectedSite}
-              commands={siteCommands}
-              onSelect={handleAdapterSelect}
-            />
-          )}
-
-          {step === 'params' && selectedAdapter && (
+          ) : (
             <>
-              <ParamForm
-                adapter={selectedAdapter}
-                params={params}
-                onParamsChange={setParams}
-                runResult={runResult}
-                running={running}
-                onRun={handleRun}
-                onSavePreset={handleSavePreset}
-              />
-              {runResult && (
-                <ResultTable
-                  result={runResult}
-                  columns={selectedAdapter.columns}
-                  filename={`${selectedAdapter.site}-${selectedAdapter.name}`}
+              {step !== 'platform' && (
+                <button className="back-btn" onClick={handleBack}>← 返回</button>
+              )}
+
+              {step === 'platform' && (
+                <PlatformSelector
+                  sites={sites}
+                  adapters={adapters}
+                  onSelect={handleSiteSelect}
                 />
+              )}
+
+              {step === 'command' && selectedSite && (
+                <CommandSelector
+                  site={selectedSite}
+                  commands={siteCommands}
+                  onSelect={handleAdapterSelect}
+                />
+              )}
+
+              {step === 'params' && selectedAdapter && (
+                <>
+                  <ParamForm
+                    adapter={selectedAdapter}
+                    params={params}
+                    onParamsChange={setParams}
+                    runResult={runResult}
+                    running={running}
+                    onRun={handleRun}
+                    onSavePreset={handleSavePreset}
+                  />
+                  {runResult && (
+                    <ResultTable
+                      result={runResult}
+                      columns={selectedAdapter.columns}
+                      filename={`${selectedAdapter.site}-${selectedAdapter.name}`}
+                    />
+                  )}
+                </>
               )}
             </>
           )}
@@ -332,6 +400,13 @@ function App() {
             onRename={handleRename}
             onBatchRun={handleBatchRun}
             batchRunning={batchRunning}
+          />
+          <TaskList
+            tasks={tasks}
+            editingTaskId={editingTask && editingTask !== 'new' ? editingTask.id : null}
+            onAdd={handleAddTask}
+            onEdit={handleEditTask}
+            onDelete={handleDeleteTask}
           />
         </aside>
       </div>

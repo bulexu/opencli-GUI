@@ -44,6 +44,22 @@ export interface FeishuConfig {
   }
 }
 
+export interface ScheduledTask {
+  id: string
+  name: string
+  presetIds: string[]
+  schedule: {
+    type: 'interval' | 'daily'
+    intervalMinutes?: number
+    time?: string // HH:MM
+  }
+  enabled: boolean
+  webhookUrl?: string
+  lastRun?: string
+  lastStatus?: 'success' | 'error' | 'running'
+  lastError?: string
+}
+
 export interface RunResult {
   success: boolean
   data?: string

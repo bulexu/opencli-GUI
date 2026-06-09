@@ -1,4 +1,4 @@
-import type { Adapter, FeishuConfig, Preset, RunResult } from '../types'
+import type { Adapter, FeishuConfig, Preset, RunResult, ScheduledTask } from '../types'
 
 export async function listCommands(): Promise<Adapter[]> {
   const result = await window.api.listCommands()
@@ -38,4 +38,24 @@ export async function saveFeishuConfig(config: FeishuConfig): Promise<FeishuConf
 
 export async function testFeishuWebhook(url: string, keyword: string): Promise<{ success: boolean; data?: string; error?: string }> {
   return window.api.testFeishuWebhook(url, keyword)
+}
+
+export async function loadTasks(): Promise<ScheduledTask[]> {
+  return (await window.api.loadTasks()) as ScheduledTask[]
+}
+
+export async function saveTask(task: ScheduledTask): Promise<ScheduledTask[]> {
+  return (await window.api.saveTask(task)) as ScheduledTask[]
+}
+
+export async function deleteTask(id: string): Promise<ScheduledTask[]> {
+  return (await window.api.deleteTask(id)) as ScheduledTask[]
+}
+
+export async function runTaskNow(taskId: string): Promise<ScheduledTask[]> {
+  return (await window.api.runTaskNow(taskId)) as ScheduledTask[]
+}
+
+export function onTasksUpdated(callback: (data: ScheduledTask[]) => void): () => void {
+  return window.api.onTasksUpdated((data) => callback(data as ScheduledTask[]))
 }

@@ -11,6 +11,11 @@ export interface OpencliApi {
   loadFeishuConfig: () => Promise<unknown>
   saveFeishuConfig: (config: unknown) => Promise<unknown>
   testFeishuWebhook: (url: string, keyword: string) => Promise<{ success: boolean; data?: string; error?: string }>
+  loadTasks: () => Promise<unknown[]>
+  saveTask: (task: unknown) => Promise<unknown[]>
+  deleteTask: (id: string) => Promise<unknown[]>
+  runTaskNow: (taskId: string) => Promise<unknown[]>
+  onTasksUpdated: (callback: (data: unknown[]) => void) => () => void
 }
 
 contextBridge.exposeInMainWorld('api', {
@@ -29,4 +34,13 @@ contextBridge.exposeInMainWorld('api', {
   loadFeishuConfig: () => ipcRenderer.invoke('feishuConfig:load'),
   saveFeishuConfig: (config: unknown) => ipcRenderer.invoke('feishuConfig:save', config),
   testFeishuWebhook: (url: string, keyword: string) => ipcRenderer.invoke('feishuConfig:testWebhook', url, keyword),
+  loadTasks: () => ipcRenderer.invoke('tasks:load'),
+  saveTask: (task: unknown) => ipcRenderer.invoke('tasks:save', task),
+  deleteTask: (id: string) => ipcRenderer.invoke('tasks:delete', id),
+  runTaskNow: (taskId: string) => ipcRenderer.invoke('tasks:run', taskId),
+  onTasksUpdated: (callback: (data: unknown[]) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, data: unknown[]) => callback(data)
+    ipcRenderer.on('tasks:updated', handler)
+    return () => { ipcRenderer.removeListener('tasks:updated', handler) }
+  },
 } satisfies OpencliApi)

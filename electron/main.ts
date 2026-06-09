@@ -3,6 +3,7 @@ import { execFile, ChildProcess } from 'child_process'
 import * as path from 'path'
 import * as fs from 'fs'
 import * as crypto from 'crypto'
+import * as Papa from 'papaparse'
 
 let mainWindow: BrowserWindow | null = null
 
@@ -61,6 +62,253 @@ function saveFeishuConfigData(config: FeishuConfigData): void {
   const json = JSON.stringify(config, null, 2)
   fs.writeFileSync(FEISHU_CONFIG_TMP, json, 'utf-8')
   fs.renameSync(FEISHU_CONFIG_TMP, FEISHU_CONFIG_PATH)
+}
+
+async function sendFeishuNotification(text: string): Promise<void> {
+  const config = loadFeishuConfigData()
+  if (!config.webhook.url) return
+  try {
+    // Include keyword in message if configured (Feishu webhook validation)
+    const message = config.webhook.keyword
+      ? `${config.webhook.keyword}\n${text}`
+      : text
+    await fetch(config.webhook.url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ msg_type: 'text', content: { text: message } }),
+    })
+  } catch { /* best-effort — don't crash the app */ }
+}
+
+async function pushResultsToWebhook(webhookUrl: string, results: Array<{ platform: string; instruct: string; params: Record<string, unknown>; items: Record<string, string>[] }>): Promise<void> {
+  try {
+    await fetch(webhookUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(results),
+    })
+  } catch { /* best-effort */ }
+}
+
+// Scheduled tasks persistence
+interface ScheduledTaskData {
+  id: string
+  name: string
+  presetIds: string[]
+  schedule: { type: 'interval' | 'daily'; intervalMinutes?: number; time?: string }
+  enabled: boolean
+  webhookUrl?: string
+  lastRun?: string
+  lastStatus?: 'success' | 'error' | 'running'
+  lastError?: string
+}
+
+const TASKS_PATH = path.join(app.getPath('userData'), 'tasks.json')
+const TASKS_TMP = TASKS_PATH + '.tmp'
+
+function loadTasksData(): ScheduledTaskData[] {
+  try {
+    if (fs.existsSync(TASKS_PATH)) {
+      const raw = JSON.parse(fs.readFileSync(TASKS_PATH, 'utf-8'))
+      if (Array.isArray(raw)) return raw as ScheduledTaskData[]
+    }
+  } catch { /* corrupt — ignore */ }
+  return []
+}
+
+function saveTasksData(data: ScheduledTaskData[]): void {
+  const json = JSON.stringify(data, null, 2)
+  fs.writeFileSync(TASKS_TMP, json, 'utf-8')
+  fs.renameSync(TASKS_TMP, TASKS_PATH)
+}
+
+// Scheduler engine
+const schedulerTimers = new Map<string, ReturnType<typeof setInterval>>()
+const tasksRunning = new Set<string>()
+
+function calcNextDailyMs(timeHHMM: string): number {
+  const [h, m] = timeHHMM.split(':').map(Number)
+  const now = new Date()
+  const target = new Date()
+  target.setHours(h, m, 0, 0)
+  if (target.getTime() <= now.getTime()) target.setDate(target.getDate() + 1)
+  return target.getTime() - now.getTime()
+}
+
+function scheduleTask(task: ScheduledTaskData): void {
+  if (!task.enabled) return
+  unscheduleTask(task.id)
+
+  if (task.schedule.type === 'interval' && task.schedule.intervalMinutes) {
+    const ms = task.schedule.intervalMinutes * 60 * 1000
+    schedulerTimers.set(task.id, setInterval(() => { runScheduledTask(task.id) }, ms))
+  } else if (task.schedule.type === 'daily' && task.schedule.time) {
+    const scheduleOnce = () => {
+      const ms = calcNextDailyMs(task.schedule.time!)
+      const timer = setTimeout(() => {
+        runScheduledTask(task.id)
+        scheduleOnce()
+      }, ms)
+      schedulerTimers.set(task.id, timer as unknown as ReturnType<typeof setInterval>)
+    }
+    scheduleOnce()
+  }
+}
+
+function unscheduleTask(taskId: string): void {
+  const timer = schedulerTimers.get(taskId)
+  if (timer) {
+    clearInterval(timer)
+    clearTimeout(timer)
+    schedulerTimers.delete(taskId)
+  }
+}
+
+function startAllSchedulers(): void {
+  for (const task of loadTasksData()) {
+    if (task.enabled) scheduleTask(task)
+  }
+}
+
+function stopAllSchedulers(): void {
+  for (const [id] of schedulerTimers) unscheduleTask(id)
+}
+
+async function runScheduledTask(taskId: string): Promise<void> {
+  if (tasksRunning.has(taskId)) return
+  tasksRunning.add(taskId)
+
+  try {
+    const tasks = loadTasksData()
+    const task = tasks.find((t) => t.id === taskId)
+    if (!task) return
+
+    const presets = loadPresetsData() as Record<string, unknown>[]
+    const presetMap = new Map(presets.map((p) => [p.id as string, p]))
+
+    // Validate referenced presets exist
+    const missing = task.presetIds.filter((pid) => !presetMap.has(pid))
+    if (missing.length > 0) {
+      task.lastStatus = 'error'
+      task.lastError = '关联预设已删除'
+      task.lastRun = new Date().toISOString()
+      saveTasksData(tasks)
+      mainWindow?.webContents.send('tasks:updated', tasks)
+      await sendFeishuNotification(
+        `❌ 定时任务执行失败\n任务名称：${task.name}\n错误信息：关联预设已删除`
+      )
+      return
+    }
+
+    task.lastStatus = 'running'
+    task.lastRun = new Date().toISOString()
+    saveTasksData(tasks)
+    mainWindow?.webContents.send('tasks:updated', tasks)
+
+    let allSuccess = true
+    let lastError = ''
+    const presetCsvOutputs = new Map<string, string>() // presetId -> CSV stdout
+
+    // Load adapters cache to look up positional args
+    const adapters = (loadAdaptersCache() ?? []) as Record<string, unknown>[]
+
+    for (const presetId of task.presetIds) {
+      const preset = presetMap.get(presetId)!
+      const platform = preset.platform as string
+      const command = preset.command as string
+      const params = preset.params as Record<string, unknown>
+
+      // Find adapter to get positional args (preset.command stores adapter.name)
+      const adapter = adapters.find((a) => a.site === platform && a.name === command)
+      const positionalArgs = Array.isArray(adapter?.args)
+        ? (adapter.args as Record<string, unknown>[]).filter((a) => a.positional).map((a) => a.name as string)
+        : []
+
+      // Build args (same logic as opencli:run handler)
+      const args: string[] = [platform, command]
+      // Append positional args first (in order), without --key prefix
+      for (const name of positionalArgs) {
+        const value = params[name]
+        if (value === undefined || value === null || value === '') continue
+        args.push(String(value))
+      }
+      // Then named (non-positional) args
+      for (const [key, value] of Object.entries(params)) {
+        if (positionalArgs.includes(key)) continue
+        if (value === undefined || value === null || value === '') continue
+        if (typeof value === 'number' && isNaN(value)) continue
+        if (typeof value === 'boolean') {
+          if (value) args.push(`--${key}`)
+        } else {
+          args.push(`--${key}`, String(value))
+        }
+      }
+      args.push('-f', 'csv')
+
+      const result = await runOpencli(args)
+      if (result.exitCode !== 0) {
+        allSuccess = false
+        lastError = result.stderr || `命令 ${command} 执行失败 (exit ${result.exitCode})`
+        break
+      }
+      if (result.stdout.trim()) {
+        presetCsvOutputs.set(presetId, result.stdout)
+      }
+    }
+
+    // Push all results to webhook as a single array
+    if (allSuccess && task.webhookUrl && presetCsvOutputs.size > 0) {
+      const results: Array<{ platform: string; instruct: string; params: Record<string, unknown>; items: Record<string, string>[] }> = []
+      for (const [presetId, csvOutput] of presetCsvOutputs) {
+        const preset = presetMap.get(presetId)
+        if (!preset) continue
+        const parsed = Papa.parse<Record<string, string>>(csvOutput, { header: true, skipEmptyLines: true })
+        results.push({
+          platform: preset.platform as string,
+          instruct: preset.command as string,
+          params: preset.params as Record<string, unknown>,
+          items: parsed.data,
+        })
+      }
+      if (results.length > 0) {
+        await pushResultsToWebhook(task.webhookUrl, results)
+      }
+    }
+
+    // Reload in case of concurrent edits
+    const updatedTasks = loadTasksData()
+    const updatedTask = updatedTasks.find((t) => t.id === taskId)
+    if (updatedTask) {
+      updatedTask.lastStatus = allSuccess ? 'success' : 'error'
+      updatedTask.lastError = allSuccess ? undefined : lastError
+      updatedTask.lastRun = new Date().toISOString()
+      saveTasksData(updatedTasks)
+      mainWindow?.webContents.send('tasks:updated', updatedTasks)
+
+      // Notify via Feishu webhook
+      if (!allSuccess) {
+        await sendFeishuNotification(
+          `❌ 定时任务执行失败\n任务名称：${task.name}\n错误信息：${lastError}`
+        )
+      }
+    }
+  } catch (err) {
+    // Unexpected error — update task status so it doesn't stay stuck in 'running'
+    const tasks = loadTasksData()
+    const task = tasks.find((t) => t.id === taskId)
+    if (task) {
+      task.lastStatus = 'error'
+      task.lastError = err instanceof Error ? err.message : '任务执行异常'
+      task.lastRun = new Date().toISOString()
+      saveTasksData(tasks)
+      mainWindow?.webContents.send('tasks:updated', tasks)
+      await sendFeishuNotification(
+        `❌ 定时任务执行异常\n任务名称：${task.name}\n错误信息：${task.lastError}`
+      )
+    }
+  } finally {
+    tasksRunning.delete(taskId)
+  }
 }
 
 // Track active child processes for cleanup on quit
@@ -244,6 +492,7 @@ app.whenReady().then(() => {
     console.log('[opencli-gui] app.asar.unpacked exists:', fs.existsSync(unpackedDir))
   }
   createWindow()
+  startAllSchedulers()
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
   })
@@ -255,6 +504,8 @@ app.on('window-all-closed', () => {
 
 // Kill all active child processes on quit
 app.on('before-quit', (event) => {
+  stopAllSchedulers()
+
   if (isQuittingAfterCleanup || activeProcesses.size === 0) return
 
   event.preventDefault()
@@ -461,4 +712,36 @@ ipcMain.handle('feishuConfig:testWebhook', async (_event, url: string, keyword: 
   } catch (err) {
     return { success: false, error: err instanceof Error ? err.message : '请求失败' }
   }
+})
+
+// IPC: scheduled tasks
+ipcMain.handle('tasks:load', () => {
+  return loadTasksData()
+})
+
+ipcMain.handle('tasks:save', (_event, task: ScheduledTaskData) => {
+  const tasks = loadTasksData()
+  const idx = tasks.findIndex((t) => t.id === task.id)
+  if (idx >= 0) {
+    tasks[idx] = task
+  } else {
+    tasks.push(task)
+  }
+  saveTasksData(tasks)
+  // Re-schedule this task
+  unscheduleTask(task.id)
+  scheduleTask(task)
+  return tasks
+})
+
+ipcMain.handle('tasks:delete', (_event, id: string) => {
+  unscheduleTask(id)
+  const tasks = loadTasksData().filter((t) => t.id !== id)
+  saveTasksData(tasks)
+  return tasks
+})
+
+ipcMain.handle('tasks:run', async (_event, taskId: string) => {
+  await runScheduledTask(taskId)
+  return loadTasksData()
 })
