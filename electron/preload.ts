@@ -8,6 +8,9 @@ export interface OpencliApi {
   deletePreset: (id: string) => Promise<unknown[]>
   saveCsv: (filename: string, content: string) => Promise<string | null>
   onAdaptersUpdated: (callback: (data: unknown[]) => void) => () => void
+  loadFeishuConfig: () => Promise<unknown>
+  saveFeishuConfig: (config: unknown) => Promise<unknown>
+  testFeishuWebhook: (url: string, keyword: string) => Promise<{ success: boolean; data?: string; error?: string }>
 }
 
 contextBridge.exposeInMainWorld('api', {
@@ -23,4 +26,7 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.on('adapters:updated', handler)
     return () => { ipcRenderer.removeListener('adapters:updated', handler) }
   },
+  loadFeishuConfig: () => ipcRenderer.invoke('feishuConfig:load'),
+  saveFeishuConfig: (config: unknown) => ipcRenderer.invoke('feishuConfig:save', config),
+  testFeishuWebhook: (url: string, keyword: string) => ipcRenderer.invoke('feishuConfig:testWebhook', url, keyword),
 } satisfies OpencliApi)

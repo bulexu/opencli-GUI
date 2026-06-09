@@ -1,12 +1,13 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import Papa from 'papaparse'
-import type { Adapter, Preset } from './types'
-import { listCommands, loadPresets, savePreset, deletePreset } from './services/opencli'
+import type { Adapter, Preset, FeishuConfig } from './types'
+import { listCommands, loadPresets, savePreset, deletePreset, loadFeishuConfig } from './services/opencli'
 import PlatformSelector from './components/PlatformSelector'
 import CommandSelector from './components/CommandSelector'
 import ParamForm from './components/ParamForm'
 import ResultTable from './components/ResultTable'
 import PresetManager from './components/PresetManager'
+import FeishuConfigPanel from './components/FeishuConfigPanel'
 
 type Step = 'platform' | 'command' | 'params'
 
@@ -28,9 +29,12 @@ function App() {
   const [batchProgress, setBatchProgress] = useState<{ current: number; total: number } | null>(null)
   const batchCancelRef = useRef(false)
 
+  const [feishuConfig, setFeishuConfig] = useState<FeishuConfig>({ appId: '', appSecret: '', webhook: { url: '', keyword: '' } })
+  const [settingsOpen, setSettingsOpen] = useState(false)
+
   useEffect(() => {
-    // Decouple: adapter failure is fatal, preset failure is non-fatal
-    Promise.allSettled([listCommands(), loadPresets()]).then(([adpsResult, prsResult]) => {
+    // Decouple: adapter failure is fatal, preset and config failures are non-fatal
+    Promise.allSettled([listCommands(), loadPresets(), loadFeishuConfig()]).then(([adpsResult, prsResult, fcResult]) => {
       if (adpsResult.status === 'rejected') {
         setError(adpsResult.reason?.message || '加载适配器列表失败')
       } else {
@@ -38,6 +42,9 @@ function App() {
       }
       if (prsResult.status === 'fulfilled') {
         setPresets(prsResult.value)
+      }
+      if (fcResult.status === 'fulfilled') {
+        setFeishuConfig(fcResult.value)
       }
       setLoading(false)
     })
@@ -259,6 +266,9 @@ function App() {
             <span className="step-num">3</span> 配置运行
           </div>
         </div>
+        <div className="header-right">
+          <button className="settings-btn" onClick={() => setSettingsOpen(true)} title="飞书配置">⚙</button>
+        </div>
       </header>
 
       {toast && <div className="toast">{toast}</div>}
@@ -325,6 +335,17 @@ function App() {
           />
         </aside>
       </div>
+
+      <FeishuConfigPanel
+        config={feishuConfig}
+        open={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+        onSaved={(saved) => {
+          setFeishuConfig(saved)
+          setSettingsOpen(false)
+          setToast('飞书配置已保存')
+        }}
+      />
     </div>
   )
 }

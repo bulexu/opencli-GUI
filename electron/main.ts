@@ -24,6 +24,45 @@ const PRESETS_TMP_PATH = PRESETS_PATH + '.tmp'
 const ADAPTERS_CACHE_PATH = path.join(app.getPath('userData'), 'adapters-cache.json')
 const ADAPTERS_CACHE_TMP = ADAPTERS_CACHE_PATH + '.tmp'
 
+// Feishu config persistence
+interface FeishuConfigData {
+  appId: string
+  appSecret: string
+  webhook: { url: string; keyword: string }
+}
+
+const FEISHU_CONFIG_PATH = path.join(app.getPath('userData'), 'feishu-config.json')
+const FEISHU_CONFIG_TMP = FEISHU_CONFIG_PATH + '.tmp'
+
+function loadFeishuConfigData(): FeishuConfigData {
+  try {
+    if (fs.existsSync(FEISHU_CONFIG_PATH)) {
+      const raw = JSON.parse(fs.readFileSync(FEISHU_CONFIG_PATH, 'utf-8'))
+      if (raw && typeof raw === 'object') {
+        return {
+          appId: typeof raw.appId === 'string' ? raw.appId : '',
+          appSecret: typeof raw.appSecret === 'string' ? raw.appSecret : '',
+          webhook: raw.webhook && typeof raw.webhook === 'object'
+            ? {
+                url: typeof raw.webhook.url === 'string' ? raw.webhook.url : '',
+                keyword: typeof raw.webhook.keyword === 'string' ? raw.webhook.keyword : '',
+              }
+            : { url: '', keyword: '' },
+        }
+      }
+    }
+  } catch {
+    // corrupt file — ignore
+  }
+  return { appId: '', appSecret: '', webhook: { url: '', keyword: '' } }
+}
+
+function saveFeishuConfigData(config: FeishuConfigData): void {
+  const json = JSON.stringify(config, null, 2)
+  fs.writeFileSync(FEISHU_CONFIG_TMP, json, 'utf-8')
+  fs.renameSync(FEISHU_CONFIG_TMP, FEISHU_CONFIG_PATH)
+}
+
 // Track active child processes for cleanup on quit
 const activeProcesses = new Map<string, ChildProcess>()
 let isQuittingAfterCleanup = false
@@ -380,4 +419,46 @@ ipcMain.handle('dialog:saveCsv', async (_event, filename: string, content: strin
   if (result.canceled || !result.filePath) return null
   await fs.promises.writeFile(result.filePath, content, 'utf-8')
   return result.filePath
+})
+
+// IPC: feishu config
+ipcMain.handle('feishuConfig:load', () => {
+  return loadFeishuConfigData()
+})
+
+ipcMain.handle('feishuConfig:save', (_event, config: unknown) => {
+  if (!config || typeof config !== 'object') return loadFeishuConfigData()
+  const c = config as Record<string, unknown>
+  const data: FeishuConfigData = {
+    appId: typeof c.appId === 'string' ? c.appId : '',
+    appSecret: typeof c.appSecret === 'string' ? c.appSecret : '',
+    webhook: c.webhook && typeof c.webhook === 'object'
+      ? {
+          url: typeof (c.webhook as Record<string, unknown>).url === 'string' ? (c.webhook as Record<string, unknown>).url as string : '',
+          keyword: typeof (c.webhook as Record<string, unknown>).keyword === 'string' ? (c.webhook as Record<string, unknown>).keyword as string : '',
+        }
+      : { url: '', keyword: '' },
+  }
+  saveFeishuConfigData(data)
+  return data
+})
+
+ipcMain.handle('feishuConfig:testWebhook', async (_event, url: string, keyword: string) => {
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        msg_type: 'text',
+        content: { text: keyword || 'OpenCLI GUI Webhook 测试' },
+      }),
+    })
+    const body = await response.text()
+    if (!response.ok) {
+      return { success: false, error: `HTTP ${response.status}: ${body}` }
+    }
+    return { success: true, data: body }
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : '请求失败' }
+  }
 })

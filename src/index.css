@@ -924,3 +924,192 @@ tr:hover td {
   font-size: 12px;
   border-bottom: 1px solid #ffe0b2;
 }
+
+/* Settings button in header */
+.header-right {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+}
+
+.settings-btn {
+  background: none;
+  border: 1px solid var(--border);
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  font-size: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.settings-btn:hover {
+  border-color: var(--primary);
+  color: var(--primary);
+  background: rgba(26, 115, 232, 0.05);
+}
+
+/* Modal overlay */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 200;
+}
+
+/* Feishu config panel */
+.feishu-config-panel {
+  background: var(--surface);
+  border-radius: 12px;
+  width: 480px;
+  max-height: 80vh;
+  overflow-y: auto;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.18);
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+}
+
+.modal-header h2 {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.modal-close {
+  background: none;
+  border: none;
+  font-size: 20px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 4px;
+  line-height: 1;
+}
+
+.modal-close:hover {
+  background: var(--bg);
+  color: var(--text);
+}
+
+.modal-body {
+  padding: 20px;
+}
+
+.modal-body .form-section h3 {
+  font-size: 13px;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 12px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border);
+}
+
+.modal-body .form-field {
+  display: grid;
+  grid-template-columns: 120px 1fr;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 0;
+}
+
+.modal-body .form-field label {
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.modal-body .form-field input[type="text"],
+.modal-body .form-field input[type="password"] {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 13px;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.modal-body .form-field input:focus {
+  border-color: var(--primary);
+}
+
+.modal-body .form-field.field-error input {
+  border-color: var(--error);
+  background: #fff8f8;
+}
+
+.modal-body .field-error-msg {
+  grid-column: 2;
+  font-size: 11px;
+  color: var(--error);
+  margin-top: -4px;
+  padding-bottom: 4px;
+}
+
+.modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 16px 20px;
+  border-top: 1px solid var(--border);
+}
+
+.modal-save-error {
+  margin-top: 12px;
+  padding: 10px 14px;
+  background: #fce4ec;
+  border-radius: 6px;
+  color: var(--error);
+  font-size: 13px;
+}
+
+.webhook-test-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 0 4px 132px;
+}
+
+.test-btn {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  padding: 6px 14px;
+  border-radius: 6px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.test-btn:hover:not(:disabled) {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+.test-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.test-result {
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.test-ok {
+  color: var(--success);
+}
+
+.test-fail {
+  color: var(--error);
+}

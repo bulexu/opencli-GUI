@@ -35,6 +35,15 @@ export interface Preset {
   createdAt: string
 }
 
+export interface FeishuConfig {
+  appId: string
+  appSecret: string
+  webhook: {
+    url: string
+    keyword: string
+  }
+}
+
 export interface RunResult {
   success: boolean
   data?: string
