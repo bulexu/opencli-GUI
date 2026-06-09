@@ -95,7 +95,7 @@ interface ScheduledTaskData {
   id: string
   name: string
   presetIds: string[]
-  schedule: { type: 'interval' | 'daily'; intervalMinutes?: number; time?: string }
+  schedule: { type: 'interval' | 'daily' | 'weekly' | 'monthly'; intervalMinutes?: number; time?: string; dayOfWeek?: number; dayOfMonth?: number }
   enabled: boolean
   webhookUrl?: string
   lastRun?: string
@@ -135,6 +135,33 @@ function calcNextDailyMs(timeHHMM: string): number {
   return target.getTime() - now.getTime()
 }
 
+function calcNextWeeklyMs(timeHHMM: string, dayOfWeek: number): number {
+  const [h, m] = timeHHMM.split(':').map(Number)
+  const now = new Date()
+  const target = new Date()
+  target.setHours(h, m, 0, 0)
+  const currentDay = now.getDay()
+  let daysAhead = dayOfWeek - currentDay
+  if (daysAhead < 0 || (daysAhead === 0 && target.getTime() <= now.getTime())) {
+    daysAhead += 7
+  }
+  target.setDate(target.getDate() + daysAhead)
+  return target.getTime() - now.getTime()
+}
+
+function calcNextMonthlyMs(timeHHMM: string, dayOfMonth: number): number {
+  const [h, m] = timeHHMM.split(':').map(Number)
+  const now = new Date()
+  const target = new Date()
+  target.setDate(Math.min(dayOfMonth, new Date(target.getFullYear(), target.getMonth() + 1, 0).getDate()))
+  target.setHours(h, m, 0, 0)
+  if (target.getTime() <= now.getTime()) {
+    target.setMonth(target.getMonth() + 1)
+    target.setDate(Math.min(dayOfMonth, new Date(target.getFullYear(), target.getMonth() + 1, 0).getDate()))
+  }
+  return target.getTime() - now.getTime()
+}
+
 function scheduleTask(task: ScheduledTaskData): void {
   if (!task.enabled) return
   unscheduleTask(task.id)
@@ -145,6 +172,26 @@ function scheduleTask(task: ScheduledTaskData): void {
   } else if (task.schedule.type === 'daily' && task.schedule.time) {
     const scheduleOnce = () => {
       const ms = calcNextDailyMs(task.schedule.time!)
+      const timer = setTimeout(() => {
+        runScheduledTask(task.id)
+        scheduleOnce()
+      }, ms)
+      schedulerTimers.set(task.id, timer as unknown as ReturnType<typeof setInterval>)
+    }
+    scheduleOnce()
+  } else if (task.schedule.type === 'weekly' && task.schedule.time && task.schedule.dayOfWeek !== undefined) {
+    const scheduleOnce = () => {
+      const ms = calcNextWeeklyMs(task.schedule.time!, task.schedule.dayOfWeek!)
+      const timer = setTimeout(() => {
+        runScheduledTask(task.id)
+        scheduleOnce()
+      }, ms)
+      schedulerTimers.set(task.id, timer as unknown as ReturnType<typeof setInterval>)
+    }
+    scheduleOnce()
+  } else if (task.schedule.type === 'monthly' && task.schedule.time && task.schedule.dayOfMonth !== undefined) {
+    const scheduleOnce = () => {
+      const ms = calcNextMonthlyMs(task.schedule.time!, task.schedule.dayOfMonth!)
       const timer = setTimeout(() => {
         runScheduledTask(task.id)
         scheduleOnce()

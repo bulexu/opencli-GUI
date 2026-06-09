@@ -14,13 +14,17 @@ export default function TaskEditor({ task, presets, onSave, onCancel, onRunNow }
   const [selectedPresetIds, setSelectedPresetIds] = useState<Set<string>>(
     new Set(task?.presetIds ?? [])
   )
-  const [scheduleType, setScheduleType] = useState<'interval' | 'daily'>(
+  const [scheduleType, setScheduleType] = useState<'interval' | 'daily' | 'weekly' | 'monthly'>(
     task?.schedule.type ?? 'interval'
   )
   const [intervalMinutes, setIntervalMinutes] = useState<string>(
     String(task?.schedule.intervalMinutes ?? 30)
   )
   const [time, setTime] = useState(task?.schedule.time ?? '09:00')
+  const [dayOfWeek, setDayOfWeek] = useState<number>(task?.schedule.dayOfWeek ?? 1)
+  const [dayOfMonth, setDayOfMonth] = useState<string>(
+    String(task?.schedule.dayOfMonth ?? 1)
+  )
   const [enabled, setEnabled] = useState(task?.enabled ?? true)
   const [webhookUrl, setWebhookUrl] = useState(task?.webhookUrl ?? '')
   const [saveError, setSaveError] = useState('')
@@ -62,19 +66,29 @@ export default function TaskEditor({ task, presets, onSave, onCancel, onRunNow }
       setSaveError('间隔时间至少为 1 分钟')
       return
     }
-    if (scheduleType === 'daily' && !/^\d{2}:\d{2}$/.test(time)) {
+    if ((scheduleType === 'daily' || scheduleType === 'weekly' || scheduleType === 'monthly') && !/^\d{2}:\d{2}$/.test(time)) {
       setSaveError('请输入有效的时间格式 HH:MM')
+      return
+    }
+    const dom = Number(dayOfMonth)
+    if (scheduleType === 'monthly' && (!dom || dom < 1 || dom > 31)) {
+      setSaveError('每月日期请输入 1-31')
       return
     }
 
     setSaveError('')
+    const schedule = scheduleType === 'interval'
+      ? { type: 'interval' as const, intervalMinutes: mins }
+      : scheduleType === 'daily'
+      ? { type: 'daily' as const, time }
+      : scheduleType === 'weekly'
+      ? { type: 'weekly' as const, time, dayOfWeek }
+      : { type: 'monthly' as const, time, dayOfMonth: dom }
     onSave({
       id: task?.id ?? crypto.randomUUID(),
       name: name.trim(),
       presetIds: Array.from(selectedPresetIds),
-      schedule: scheduleType === 'interval'
-        ? { type: 'interval', intervalMinutes: mins }
-        : { type: 'daily', time },
+      schedule,
       enabled,
       webhookUrl: webhookUrl.trim() || undefined,
       lastRun: task?.lastRun,
@@ -150,11 +164,23 @@ export default function TaskEditor({ task, presets, onSave, onCancel, onRunNow }
               className={scheduleType === 'daily' ? 'active' : ''}
               onClick={() => setScheduleType('daily')}
             >
-              每日定时
+              每日
+            </button>
+            <button
+              className={scheduleType === 'weekly' ? 'active' : ''}
+              onClick={() => setScheduleType('weekly')}
+            >
+              每周
+            </button>
+            <button
+              className={scheduleType === 'monthly' ? 'active' : ''}
+              onClick={() => setScheduleType('monthly')}
+            >
+              每月
             </button>
           </div>
 
-          {scheduleType === 'interval' ? (
+          {scheduleType === 'interval' && (
             <div className="task-schedule-input">
               <input
                 type="number"
@@ -164,8 +190,49 @@ export default function TaskEditor({ task, presets, onSave, onCancel, onRunNow }
               />
               <span>分钟</span>
             </div>
-          ) : (
+          )}
+          {scheduleType === 'daily' && (
             <div className="task-schedule-input">
+              <input
+                type="time"
+                value={time}
+                onChange={(e) => setTime(e.target.value)}
+              />
+            </div>
+          )}
+          {scheduleType === 'weekly' && (
+            <div className="task-schedule-input">
+              <select
+                value={dayOfWeek}
+                onChange={(e) => setDayOfWeek(Number(e.target.value))}
+              >
+                <option value={1}>周一</option>
+                <option value={2}>周二</option>
+                <option value={3}>周三</option>
+                <option value={4}>周四</option>
+                <option value={5}>周五</option>
+                <option value={6}>周六</option>
+                <option value={0}>周日</option>
+              </select>
+              <input
+                type="time"
+                value={time}
+                onChange={(e) => setTime(e.target.value)}
+              />
+            </div>
+          )}
+          {scheduleType === 'monthly' && (
+            <div className="task-schedule-input">
+              <span>每月</span>
+              <input
+                type="number"
+                min={1}
+                max={31}
+                value={dayOfMonth}
+                onChange={(e) => setDayOfMonth(e.target.value)}
+                style={{ width: 60 }}
+              />
+              <span>日</span>
               <input
                 type="time"
                 value={time}

@@ -49,9 +49,11 @@ export interface ScheduledTask {
   name: string
   presetIds: string[]
   schedule: {
-    type: 'interval' | 'daily'
+    type: 'interval' | 'daily' | 'weekly' | 'monthly'
     intervalMinutes?: number
     time?: string // HH:MM
+    dayOfWeek?: number // 0-6, 0=Sunday (for weekly)
+    dayOfMonth?: number // 1-31 (for monthly)
   }
   enabled: boolean
   webhookUrl?: string
