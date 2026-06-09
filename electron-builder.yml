@@ -5,13 +5,13 @@ directories:
   buildResources: build
   output: releases
 asar: true
-asarUnpack:
-  - vendor/**
+extraResources:
+  - from: vendor
+    to: vendor
 icon: opencli.ico
 files:
   - dist/**/*
   - dist-electron/**/*
-  - vendor/**/*
   - build/adapters-cache.json
 win:
   target:

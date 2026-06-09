@@ -6,16 +6,17 @@ import * as crypto from 'crypto'
 
 let mainWindow: BrowserWindow | null = null
 
-// Resolve bundled opencli script path (vendored to avoid pnpm symlink issues)
-// In packaged app: resources/app.asar.unpacked/vendor/opencli/dist/src/main.js
-// In dev: project_root/vendor/opencli/dist/src/main.js
+// Resolve opencli wrapper path (vendored to avoid pnpm symlink issues).
+// The wrapper (CJS) clears process.versions.electron before loading the real
+// ESM entry, which prevents Commander v14's Electron argv auto-detection bug.
+// In packaged app: extraResources copies to resources/vendor/ (outside asar)
+// In dev: project_root/vendor/run-opencli.cjs
 let OPENCLI_SCRIPT = ''
 function resolveOpencliScript(): string {
   if (app.isPackaged) {
-    return path.join(process.resourcesPath, 'app.asar.unpacked', 'vendor', 'opencli', 'dist', 'src', 'main.js')
+    return path.join(process.resourcesPath, 'vendor', 'run-opencli.cjs')
   }
-  // Dev: __dirname is dist-electron/, go up to project root
-  return path.join(__dirname, '..', 'vendor', 'opencli', 'dist', 'src', 'main.js')
+  return path.join(__dirname, '..', 'vendor', 'run-opencli.cjs')
 }
 
 const PRESETS_PATH = path.join(app.getPath('userData'), 'presets.json')
@@ -227,32 +228,24 @@ app.on('before-quit', (event) => {
     })
 })
 
-// Helper: run bundled opencli script
-// In dev: use `node` directly to avoid Commander v14's Electron auto-detection
-//   (which does argv.slice(1) instead of slice(2) when process.defaultApp is unset,
-//   causing the script path to be treated as a command argument).
-// In packaged: use process.execPath (Electron binary) with ELECTRON_RUN_AS_NODE=1.
+// Helper: run opencli via the vendor wrapper.
+// Uses process.execPath (Electron binary) with ELECTRON_RUN_AS_NODE=1 so it
+// acts as a plain Node.js runtime. The wrapper clears process.versions.electron
+// before loading opencli, preventing Commander's Electron argv bug.
 function runOpencli(args: string[], timeoutMs = 120_000): Promise<{ stdout: string; stderr: string; exitCode: number }> {
   const requestId = crypto.randomUUID()
 
   return new Promise((resolve) => {
-    let cwd: string
-    if (app.isPackaged) {
-      const unpackedDir = path.join(process.resourcesPath, 'app.asar.unpacked')
-      cwd = fs.existsSync(unpackedDir) ? unpackedDir : process.resourcesPath
-    } else {
-      cwd = path.join(__dirname, '..')
-    }
+    const cwd = app.isPackaged
+      ? process.resourcesPath
+      : path.join(__dirname, '..')
 
-    const execBin = app.isPackaged ? process.execPath : 'node'
-    const execEnv = app.isPackaged ? { ...process.env, ELECTRON_RUN_AS_NODE: '1' } : { ...process.env }
-
-    const child = execFile(execBin, [OPENCLI_SCRIPT, ...args], {
+    const child = execFile(process.execPath, [OPENCLI_SCRIPT, ...args], {
       windowsHide: true,
       timeout: timeoutMs,
       maxBuffer: 50 * 1024 * 1024,
       cwd,
-      env: execEnv,
+      env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' },
     }, (error, stdout, stderr) => {
       activeProcesses.delete(requestId)
 

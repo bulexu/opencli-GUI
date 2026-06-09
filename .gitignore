@@ -15,3 +15,4 @@ releases/*-unpacked
 releases/*.yaml
 releases/*.yml
 releases/*.block*
+releases/mac-*

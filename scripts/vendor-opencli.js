@@ -67,3 +67,17 @@ for (const [dep, srcDir] of depMap) {
 }
 
 console.log(`Done. ${depMap.size} dependencies vendored.`);
+
+// Generate the wrapper script that clears Electron markers before loading opencli
+const wrapperPath = path.join(ROOT, 'vendor', 'run-opencli.cjs');
+const wrapperContent = `\
+delete process.versions.electron;
+const path = require('path');
+const entry = path.join(__dirname, 'opencli', 'dist', 'src', 'main.js');
+import(require('url').pathToFileURL(entry).href).catch((err) => {
+  process.stderr.write(err.stack || err.message);
+  process.exit(1);
+});
+`;
+fs.writeFileSync(wrapperPath, wrapperContent, 'utf-8');
+console.log('Generated run-opencli.cjs wrapper.');
