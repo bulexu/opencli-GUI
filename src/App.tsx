@@ -123,6 +123,7 @@ function App() {
   }, [selectedAdapter, params])
 
   const handleDeletePreset = useCallback(async (id: string) => {
+    if (!window.confirm('确定要删除该预设吗？')) return
     try {
       const updated = await deletePreset(id)
       setPresets(updated)
@@ -237,6 +238,7 @@ function App() {
   }, [])
 
   const handleDeleteTask = useCallback(async (id: string) => {
+    if (!window.confirm('确定要删除该定时任务吗？')) return
     try {
       const updated = await deleteTask(id)
       setTasks(updated)
