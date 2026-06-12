@@ -1,6 +1,47 @@
 # OpenCLI GUI
 
-基于 Electron + React + TypeScript 构建的 OpenCLI 桌面客户端，为用户提供可视化界面来浏览平台、选择指令、配置参数并导出数据。
+一站式多平台数据采集桌面工具——内置 160+ 平台、1050+ 数据指令，无需编程，三步即可完成跨平台数据采集、监控与推送。
+
+---
+
+## 工具能力
+
+- **零门槛操作**：选择平台 → 选择指令 → 填写参数 → 运行，全程可视化，无需写代码
+- **覆盖面广**：支持电商平台（淘宝、京东、1688、Amazon）、社交媒体（微博、抖音、小红书、B站、知乎、Twitter/X、Instagram、TikTok）、招聘平台（Boss直聘、LinkedIn、脉脉、51job、Indeed）、金融（雪球、东方财富）、AI（ChatGPT、Claude、DeepSeek）、开源生态（npm、PyPI、GitHub）、新闻资讯等 160+ 平台
+- **预设复用**：保存常用采集配置为预设，按平台/指令分组管理，一键加载
+- **批量执行**：同指令多预设批量运行，结果合并展示，统一导出 CSV
+- **定时自动化**：支持固定间隔、每日、每周、每月四种调度方式，7×24 无人值守自动采集
+- **数据推送**：每个任务可配置独立 Webhook，采集完成后自动将结构化 JSON 数据推送到业务系统
+- **飞书通知**：接入飞书群机器人 Webhook，任务成功/失败实时通知，异常不遗漏
+
+## 典型应用场景
+
+### 1. 电商平台监控
+
+- 监控竞品价格变动、销量趋势（淘宝、京东、1688、Amazon）
+- 追踪品类榜单排名变化
+- 定时采集商品详情与评价数据，推送至内部数据库
+
+### 2. 社媒舆情监控
+
+- 追踪品牌关键词在微博、小红书、知乎的讨论热度
+- 监控抖音、B站、TikTok 相关视频数据变化
+- 批量采集多账号粉丝、互动数据，生成趋势报告
+
+### 3. 招聘市场监控
+
+- 追踪目标岗位在 Boss直聘、LinkedIn、脉脉、51job 的发布与薪资变化
+- 定时采集竞对公司招聘动态，推送至飞书群
+- 监控行业人才流动趋势
+
+### 4. 更多场景
+
+- 金融资讯：雪球、东方财富数据追踪
+- AI 动态：ChatGPT、Claude、DeepSeek 平台信息监控
+- 开源生态：npm、PyPI、GitHub 包更新追踪
+- 新闻舆情：36kr、HackerNews、Product Hunt 热点监控
+
+---
 
 ## 功能特性
 
@@ -82,29 +123,39 @@ pnpm run dev
 
 ## 二、打包应用
 
-### 2.1 Windows 打包
+### 2.1 指定版本号打包（推荐）
+
+使用 `pnpm release` 一步完成版本号更新 + 构建 + 打包：
 
 ```bash
-pnpm run dist:win  --x64
+# macOS/Linux 打包
+pnpm release 1.2.0
+
+# Windows 打包
+pnpm release 1.2.0 --win
 ```
 
-打包完成后，在 `releases/` 目录下生成 `.exe` 安装包。
+不传版本号会显示当前版本和用法提示。打包失败时版本号自动回滚。
 
-### 2.2 macOS 打包
+### 2.2 仅更新版本号
 
 ```bash
+npm version 1.2.0
+```
+
+仅更新 `package.json` 中的版本号，不执行构建和打包。
+
+### 2.3 使用默认版本打包
+
+沿用 `package.json` 中的当前版本号：
+
+```bash
+# macOS/Linux
 pnpm run dist
+
+# Windows
+pnpm run dist:win
 ```
-
-生成 `.dmg` 安装包。
-
-### 2.3 Linux 打包
-
-```bash
-pnpm run dist
-```
-
-生成 `.AppImage` 可执行文件。
 
 ### 2.4 打包产物说明
 
@@ -269,22 +320,20 @@ pnpm run dev
 
 #### 数据推送格式
 
-配置 Webhook 后，任务执行成功时会自动 POST 以下 JSON 数组：
+配置 Webhook 后，任务执行成功时每个关联预设的抓取结果会作为单个 JSON 对象独立 POST 到 Webhook：
 
 ```json
-[
-  {
-    "platform": "instagram",
-    "instruct": "user",
-    "username": "example",
-    "items": [
-      { "username": "example", "follower_count": "1234", ... }
-    ]
-  }
-]
+{
+  "platform": "instagram",
+  "instruct": "user",
+  "username": "example",
+  "items": [
+    { "username": "example", "follower_count": "1234", ... }
+  ]
+}
 ```
 
-每个关联预设对应数组中的一个元素，包含平台、指令、配置参数和解析后的 CSV 数据行。
+任务包含多个预设时，会按顺序发送多次请求，每次推送一个对象（包含平台、指令、配置参数和解析后的 CSV 数据行）。
 
 #### 管理定时任务
 

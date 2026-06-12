@@ -226,12 +226,14 @@ function App() {
     setEditingTaskId(task.id)
   }, [])
 
-  const handleSaveTask = useCallback(async (task: ScheduledTask) => {
+  const handleSaveTask = useCallback(async (task: ScheduledTask, options: { closeEditor?: boolean } = { closeEditor: true }) => {
     try {
       const updated = await saveTask(task)
       setTasks(updated)
-      setEditingTaskId(null)
-      setToast('任务已保存')
+      if (options.closeEditor) {
+        setEditingTaskId(null)
+        setToast('任务已保存')
+      }
     } catch {
       setToast('保存任务失败')
     }

@@ -9,6 +9,8 @@
     "preview": "vite preview",
     "dist": "npm run build && electron-builder",
     "dist:win": "npm run build && electron-builder --win",
+    "release": "node scripts/release.js",
+    "release:win": "node scripts/release.js --win",
     "postinstall": "node scripts/vendor-opencli.js"
   },
   "dependencies": {

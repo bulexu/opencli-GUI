@@ -76,12 +76,12 @@ async function sendFeishuNotification(text: string): Promise<void> {
   } catch { /* best-effort — don't crash the app */ }
 }
 
-async function pushResultsToWebhook(webhookUrl: string, results: Array<{ platform: string; instruct: string; params: Record<string, unknown>; items: Record<string, string>[] }>): Promise<void> {
+async function pushResultToWebhook(webhookUrl: string, payload: { platform: string; instruct: string; params: Record<string, unknown>; items: Record<string, string>[] }): Promise<void> {
   try {
     await fetch(webhookUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(results),
+      body: JSON.stringify(payload),
     })
   } catch { /* best-effort */ }
 }
@@ -299,22 +299,18 @@ async function runScheduledTask(taskId: string): Promise<void> {
       }
     }
 
-    // Push all results to webhook as a single array
-    if (allSuccess && task.webhookUrl && presetCsvOutputs.size > 0) {
-      const results: Array<{ platform: string; instruct: string; params: Record<string, unknown>; items: Record<string, string>[] }> = []
+    // Push each preset result to webhook as a single object
+    if (allSuccess && task.webhookUrl) {
       for (const [presetId, csvOutput] of presetCsvOutputs) {
         const preset = presetMap.get(presetId)
         if (!preset) continue
         const parsed = Papa.parse<Record<string, string>>(csvOutput, { header: true, skipEmptyLines: true })
-        results.push({
+        await pushResultToWebhook(task.webhookUrl, {
           platform: preset.platform as string,
           instruct: preset.command as string,
           params: preset.params as Record<string, unknown>,
           items: parsed.data,
         })
-      }
-      if (results.length > 0) {
-        await pushResultsToWebhook(task.webhookUrl, results)
       }
     }
 

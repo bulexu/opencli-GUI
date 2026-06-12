@@ -4,7 +4,7 @@ import type { Preset, ScheduledTask } from '../types'
 interface Props {
   task: ScheduledTask | null // null = creating new
   presets: Preset[]
-  onSave: (task: ScheduledTask) => void
+  onSave: (task: ScheduledTask, options?: { closeEditor?: boolean }) => void
   onCancel: () => void
   onRunNow: (taskId: string) => void
 }
@@ -57,23 +57,23 @@ export default function TaskEditor({ task, presets, onSave, onCancel, onRunNow }
     })
   }
 
-  const handleSave = () => {
-    if (!name.trim()) { setSaveError('请输入任务名称'); return }
-    if (selectedPresetIds.size === 0) { setSaveError('请至少选择一个预设'); return }
+  const buildTask = (): ScheduledTask | null => {
+    if (!name.trim()) { setSaveError('请输入任务名称'); return null }
+    if (selectedPresetIds.size === 0) { setSaveError('请至少选择一个预设'); return null }
 
     const mins = Number(intervalMinutes)
     if (scheduleType === 'interval' && (!mins || mins < 1)) {
       setSaveError('间隔时间至少为 1 分钟')
-      return
+      return null
     }
     if ((scheduleType === 'daily' || scheduleType === 'weekly' || scheduleType === 'monthly') && !/^\d{2}:\d{2}$/.test(time)) {
       setSaveError('请输入有效的时间格式 HH:MM')
-      return
+      return null
     }
     const dom = Number(dayOfMonth)
     if (scheduleType === 'monthly' && (!dom || dom < 1 || dom > 31)) {
       setSaveError('每月日期请输入 1-31')
-      return
+      return null
     }
 
     setSaveError('')
@@ -84,7 +84,7 @@ export default function TaskEditor({ task, presets, onSave, onCancel, onRunNow }
       : scheduleType === 'weekly'
       ? { type: 'weekly' as const, time, dayOfWeek }
       : { type: 'monthly' as const, time, dayOfMonth: dom }
-    onSave({
+    return {
       id: task?.id ?? crypto.randomUUID(),
       name: name.trim(),
       presetIds: Array.from(selectedPresetIds),
@@ -94,7 +94,20 @@ export default function TaskEditor({ task, presets, onSave, onCancel, onRunNow }
       lastRun: task?.lastRun,
       lastStatus: task?.lastStatus,
       lastError: task?.lastError,
-    })
+    }
+  }
+
+  const handleSave = () => {
+    const built = buildTask()
+    if (built) onSave(built)
+  }
+
+  const handleRunNow = () => {
+    const built = buildTask()
+    if (built) {
+      onSave(built, { closeEditor: false })
+      onRunNow(built.id)
+    }
   }
 
   const lastRunLabel = task?.lastRun
@@ -298,7 +311,7 @@ export default function TaskEditor({ task, presets, onSave, onCancel, onRunNow }
         {task && (
           <button
             className="task-run-now-btn"
-            onClick={() => onRunNow(task.id)}
+            onClick={handleRunNow}
           >
             立即运行
           </button>
